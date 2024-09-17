@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Aim Trainer Musical Extremo - Círculos Grandes</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            width: 300px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal button {
+            padding: 10px 20px;
+            margin: 10px;
+            border: none;
+            background-color: #007BFF;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .modal button:hover {
+            background-color: #0056b3;
+        }
+
+        .Contenedor {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            border: 2px dashed white;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="Contenedor">
+
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="modalConfirm" class="modal">
+        <div class="modal-content">
+            <p>¿Estás seguro que quieres reiniciar el juego?</p>
+            <button id="confirmRestart">Confirmar</button>
+            <button id="cancelRestart">Cancelar</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Ajustar el tamaño del canvas al cambiar el tamaño de la ventana
+        function resizeCanvas() {
+            canvas.width = window.innerWidth * 2;
+            canvas.height = window.innerHeight * 2;
+        }
+
+        // Llamar a la función al cargar y al redimensionar
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        let score = 0;
+        let misses = 0;
+        let gameOver = false;
+        let gameTime = 0;
+        const targets = [];
+        let maxTargets = 3;
+        const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'];
+        const notes = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00];
+
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const fixedRadius = Math.min(canvas.width, canvas.height) * 0.08;
+
+        function playNote(frequency) {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + 0.5);
+        }
+
+        function createTarget() {
+            if (targets.length < maxTargets && !gameOver) {
+                const colorIndex = Math.floor(Math.random() * colors.length);
+                targets.push({
+                    x: Math.random() * (canvas.width - fixedRadius * 2) + fixedRadius,
+                    y: Math.random() * (canvas.height - fixedRadius * 2) + fixedRadius,
+                    radius: fixedRadius,
+                    color: colors[colorIndex],
+                    note: notes[colorIndex],
+                    timeLeft: getTargetLifetime(),
+                    speed: Math.random() * 2 + 1
+                });
+            }
+        }
+
+        function getTargetLifetime() {
+            return Math.max(200, 3000 - gameTime / 20);
+        }
+
+        function getDifficultyLevel() {
+            return Math.floor(gameTime / 2000) + 1;
+        }
+
+        function update(deltaTime) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameOver) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = '60px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('¡Juego Terminado!', canvas.width / 2, canvas.height / 2 - 60);
+                ctx.fillText(`Puntaje: ${score}`, canvas.width / 2, canvas.height / 2 + 20);
+                ctx.fillText('Toca para reiniciar', canvas.width / 2, canvas.height / 2 + 100);
+                return;
+            }
+
+            gameTime += deltaTime;
+
+            for (let i = targets.length - 1; i >= 0; i--) {
+                const target = targets[i];
+                target.x += Math.cos(gameTime / 1000 + i) * target.speed;
+                target.y += Math.sin(gameTime / 1000 + i) * target.speed;
+                target.x = Math.max(target.radius, Math.min(canvas.width - target.radius, target.x));
+                target.y = Math.max(target.radius, Math.min(canvas.height - target.radius, target.y));
+
+                ctx.beginPath();
+                ctx.arc(target.x, target.y, target.radius, 0, Math.PI * 2);
+                ctx.fillStyle = target.color;
+                ctx.fill();
+
+                target.timeLeft -= deltaTime;
+                if (target.timeLeft <= 0) {
+                    targets.splice(i, 1);
+                    misses++;
+                    if (misses >= 3) {
+                        gameOver = true;
+                    }
+                }
+            }
+
+            maxTargets = Math.min(20, 3 + Math.floor(gameTime / 1000));
+
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = '30px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`Puntaje: ${score}`, 20, 40);
+            ctx.fillText(`Fallos: ${misses}/3`, 20, 80);
+            ctx.fillText(`Tiempo: ${Math.floor(gameTime / 1000)}s`, 20, 120);
+            ctx.fillText(`Nivel: ${getDifficultyLevel()}`, 20, 160);
+        }
+
+        let lastTimestamp;
+        function gameLoop(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const deltaTime = timestamp - lastTimestamp;
+
+            update(deltaTime);
+            lastTimestamp = timestamp;
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function handleTouch(e) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = (touch.clientX - rect.left) * 2;
+            const y = (touch.clientY - rect.top) * 2;
+
+            if (gameOver) {
+                confirmResetGame();
+                return;
+            }
+
+            for (let i = targets.length - 1; i >= 0; i--) {
+                const target = targets[i];
+                const distance = Math.sqrt((x - target.x) ** 2 + (y - target.y) ** 2);
+                if (distance <= target.radius) {
+                    playNote(target.note);
+                    targets.splice(i, 1);
+                    score++;
+                    break;
+                }
+            }
+        }
+
+        canvas.addEventListener('touchstart', handleTouch);
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * 2;
+            const y = (e.clientY - rect.top) * 2;
+
+            if (gameOver) {
+                confirmResetGame();
+                return;
+            }
+
+            for (let i = targets.length - 1; i >= 0; i--) {
+                const target = targets[i];
+                const distance = Math.sqrt((x - target.x) ** 2 + (y - target.y) ** 2);
+                if (distance <= target.radius) {
+                    playNote(target.note);
+                    targets.splice(i, 1);
+                    score++;
+                    break;
+                }
+            }
+        });
+
+        function confirmResetGame() {
+            const modal = document.getElementById('modalConfirm');
+            modal.style.display = 'flex';
+        }
+
+        document.getElementById('confirmRestart').addEventListener('click', () => {
+            gameOver = false;
+            score = 0;
+            misses = 0;
+            gameTime = 0;
+            targets.length = 0;
+            document.getElementById('modalConfirm').style.display = 'none';
+        });
+
+        document.getElementById('cancelRestart').addEventListener('click', () => {
+            document.getElementById('modalConfirm').style.display = 'none';
+        });
+
+        setInterval(createTarget, 1000);
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+
+</html>
